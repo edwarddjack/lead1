@@ -1,0 +1,84 @@
+# !/usr/bin/env python
+# -*- coding: utf-8 -*-
+import numpy as np
+import pandas as pd
+import math
+'''read toyota and dennso data(time and price)'''
+df1 = pd.read_csv("/Users/jwan/Desktop/research/toyota_refined.csv")
+df2 = pd.read_csv("/Users/jwan/Desktop/research/dennso_refined.csv")
+print np.shape(df1),np.shape(df2)
+
+'''θ = [-1,0.99,0.98,...1] lead-lag parameter'''
+'''dmp1&2: micro price of stock1'''
+def cut(df1):
+    dmp1 = pd.DataFrame(df1[(32401.0<df1.Time) & (df1.Time<41399.0)]).reset_index(drop=True)
+    dmp2 = pd.DataFrame(df1[(53999.0>df1.Time) & (df1.Time>45001.0)]).reset_index(drop=True)
+    dmp = pd.concat((dmp1,dmp2),axis=0).reset_index(drop = True)
+
+    d = pd.DataFrame(np.reshape(dmp["Micro_price"],(10,180718)).T)
+    d.columns = ["a","b","c","d","e","f","g","h","i","j"]
+#     print np.shape(d),type(d)
+    return d
+def cut2(df1):
+    dmp1 = pd.DataFrame(df1[(32401.0<df1.Time) & (df1.Time<41399.0)]).reset_index(drop=True)
+    dmp2 = pd.DataFrame(df1[(53999.0>df1.Time) & (df1.Time>45001.0)]).reset_index(drop=True)
+    dmp = pd.concat((dmp1,dmp2),axis=0).reset_index(drop = True)
+    d = pd.DataFrame(np.reshape(dmp["Micro_price"],(10,180718)).T)
+    d.columns = ["a2","b2","c2","d2","e2","f2","g2","h2","i2","j2"]
+#     print np.shape(d),type(d)
+    return d
+s1 = pd.DataFrame(np.diff(np.log(cut(df1)),axis=0))
+s1.columns = ["9:00~9:30","9:30~10:00","10:00~10:30","10:30~11:00",
+"11:00~11:30","12:30~13:00","13:00~13:30","13:30~14:00","14:00~14:30","14:30~15:00"]
+s2 = pd.DataFrame(np.diff(np.log(cut2(df2)),axis=0))
+s2.columns = ["9:00~9:30","9:30~10:00","10:00~10:30","10:30~11:00",
+"11:00~11:30","12:30~13:00","13:00~13:30","13:30~14:00","14:00~14:30","14:30~15:00"]
+print s1[:30],s2[:30]
+print np.shape(s1),np.shape(s2)
+# z = s1.apply(lambda x: s2.corrwith(x))
+# print z
+
+print s1[2:]["9:00~9:30"]
+print s2[:len(s2)-2]["9:00~9:30"]
+
+'''calculate the corrrelation between 2 stock in different times of day ( used: corrwith,and np.diag() )'''
+co = []
+
+for  i in range(100):
+    
+    aa1 = s1[i:].reset_index(drop=True)
+    aa2 = s2[:len(df2)-i].reset_index(drop=True)
+    z = np.diag(aa1.apply(lambda x: aa2.corrwith(x)))
+    co.append(z)
+correlation = pd.DataFrame(co)
+pd.set_option('precision',20)
+correlation.columns = ["9:00~9:30","9:30~10:00","10:00~10:30","10:30~11:00",
+                       "11:00~11:30","12:30~13:00","13:00~13:30","13:30~14:00","14:00~14:30","14:30~15:00"]
+print correlation
+
+# correlation.to_csv("lag(10ms)correlation.csv")
+
+# '''θ = [-1,0.99,0.98,...1] lead-lag parameter'''
+# '''dmp1: micro price of stock1'''
+# def cut(df1):
+#     dmp1 = pd.DataFrame(df1[(32401.0<df1.Time)& (df1.Time<41399.0)]).reset_index(drop=True)
+#     dmp2 = pd.DataFrame(df1[(53999.0>df1.Time)& (df1.Time>45001.0)]).reset_index(drop=True)
+
+#     NO = pd.cut(range(len(dmp1)),5,labels=["a","b","c","d","e"])
+#     NO = pd.DataFrame(np.asarray(NO)).reset_index(drop=True)
+#     NO.columns = ["NO"]
+
+#     NO1 = pd.cut(range(len(dmp2)),5,labels=["a","b","c","d","e"])
+#     NO1 = pd.DataFrame(np.asarray(NO1)).reset_index(drop=True)
+#     NO1.columns = ["NO"]
+
+#     a = pd.concat((NO,dmp1),axis=1)
+#     b = pd.concat((NO1,dmp2),axis=1)
+
+#     aa = pd.DataFrame(a[a["NO"]=="a"]["Micro_price"])
+#     bb = pd.DataFrame(b[b["NO"]=="a"]["Micro_price"])
+#     z = pd.concat((aa,bb),axis=0)
+#     return z
+# zz = cut(df1)
+
+

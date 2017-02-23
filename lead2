@@ -1,0 +1,41 @@
+# !/usr/bin/env python
+# -*- coding: utf-8 -*-
+import numpy as np
+import pandas as pd
+import math
+'''read toyota and dennso data(time and price)'''
+df1 = pd.read_csv("/Users/jwan/Desktop/research/toyota.csv")
+df2 = pd.read_csv("/Users/jwan/Desktop/research/dennso.csv")
+print np.shape(df1),np.shape(df2)
+
+'''interval/ms'''
+interval = np.linspace(32401,54000,2169000)
+interval = pd.DataFrame(interval.round(2))
+interval.columns = ["Time"]
+interval["price"] = np.nan
+print np.shape(interval),type(interval)
+print interval[:10]
+
+def preprocess(df1):
+    dff = df1.assign(time=lambda df1: np.ceil(df1["Time"]*100)/100)
+    tests = dff.ix[:,1:]
+    tests = tests.drop_duplicates("time",keep='last')
+#     print np.shape(tests),type(tests)
+#     print tests[:10]
+
+    '''merge interval data with real order data'''
+    m = interval.merge(tests,how='left', left_on='Time', right_on='time')
+    mu = m[["Time","Micro_price"]]
+    ms = mu.fillna(method='pad')
+    mm = ms.fillna(method='backfill')
+#     print "original merge data",mu[:10]
+#     print "forward filling and back filling",mm[:30]
+    return mm
+dfs1 = preprocess(df1)
+dfs2 = preprocess(df2)
+# print dfs1[:20]
+# print dfs2[200:300]
+print np.shape(dfs1),np.shape(dfs2) 
+
+# dfs1.to_csv("toyota_refined.csv",index=False)
+# dfs2.to_csv("dennso_refined.csv",index=False)
