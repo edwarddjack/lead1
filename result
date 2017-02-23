@@ -1,0 +1,280 @@
+# !/usr/bin/env python
+# -*- coding: utf-8 -*-
+import numpy as np
+import pandas as pd
+import os
+
+# =========================================================================
+day = [2,3,4,7,8]
+for i in day:
+    '''please change the stock code where written _7203,6902 and the last row _7203_6902.
+    if you want to compare the other twostocks'''
+    
+    
+    path1 = "/Users/jwan/Desktop/data/TickInfoSum_2016062%d_7203.csv"%i
+    path2 = "/Users/jwan/Desktop/data/TickInfoSum_2016062%d_7259.csv"%i
+    dfa1 = pd.read_csv(path1)
+    dfa2 = pd.read_csv(path2)
+    '''preprocess'''
+    '''2016-6-24  df1: toyota   df2: dennsou '''
+
+    ''' extract the data after 9:00:01.000~'''
+    def data(df1):
+        df1 = df1[df1.Time > 90001000000]
+        df1 = df1.dropna(axis=1)
+        df1 = df1.dropna(axis=0)
+        df1 = df1.drop_duplicates("Time",keep='last')
+        df1 = df1.reset_index(drop=True)
+        return df1
+    df1 = data(dfa1)
+    df2 = data(dfa2)
+
+    '''precision round to 100ms'''
+    dur1 = pd.DataFrame(df1["Time"]/1000).astype(np.int32)
+    dur2 = pd.DataFrame(df2["Time"]/1000).astype(np.int32)
+
+
+    '''convert tick time to second time'''
+    def to_string(time):
+        if time < 100000000:
+            time = str(time)
+            return "0 days %s:%s:%s.%s"%(time[0:1],time[1:3],time[3:5],time[5:8])
+        else:
+            time = str(time)
+            return "0 days %s:%s:%s.%s"%(time[0:2],time[2:4],time[4:6],time[6:9])
+
+    def second(du):
+        du = du.assign(str_time=lambda du: du["Time"].apply(lambda x: to_string(x)))
+        du = du.assign(second_time=lambda du: du["str_time"].apply(
+        lambda x: pd.to_timedelta(x)).apply(lambda x: x.total_seconds()))
+        du = du.second_time
+        du = pd.DataFrame(du)
+        du.columns = ["Time"]
+        return du
+    du1 = second(dur1)#[1:].reset_index(drop=True)
+    du2 = second(dur2)#[1:].reset_index(drop=True)
+
+    '''Micro price'''
+    def micro_price(df1):
+        price = df1.ix[:,8::3]
+        volumn = df1.ix[:,9::3]
+        MP = np.sum(np.multiply(price,volumn),axis=1).astype(np.float64)/np.sum(volumn,axis=1)
+        MP = pd.DataFrame(MP)
+        MP.columns = ["Micro_price"]
+        return MP
+    MP1 = micro_price(df1)
+    MP2 = micro_price(df2)
+
+
+    '''drop duplicate timestamp data'''
+    dfs1 = pd.concat((du1,MP1),axis=1)
+    dfs2 = pd.concat((du2,MP2),axis=1)
+    dfs1 = dfs1.drop_duplicates('Time',keep='last')
+    dfs2 = dfs2.drop_duplicates('Time',keep='last')
+
+    # =========================================================================
+    '''read toyota and dennso data(time and price)'''
+    df1 = dfs1
+    df2 = dfs2
+    print np.shape(df1),np.shape(df2),type(df1)
+
+    def final(df1,df2):
+        '''preprocess df1'''
+        def preprocessdf1(df1):
+
+            df1 = df1.round(3)
+
+            '''df1:toyota , match the interval of two different time series data'''
+            '''interval/ms'''
+            interval = np.linspace(32401,54000,21690000)
+            interval = pd.DataFrame(interval.round(3)).astype(np.float64)
+            interval.columns = ["time"]
+            interval["price"] = np.nan
+
+            '''merge interval data with real order data'''
+            m = interval.merge(df1,how='left', left_on='time', right_on='Time')
+            mu = m[["time","Micro_price"]]
+            ms = mu.fillna(method='pad')
+            mm = ms.fillna(method='backfill')
+            return mm
+        mm = preprocessdf1(df1)
+
+        '''lag data: from 1ms to 10 ms. we have to calculate the lag data from -1ms to -9ms'''
+        a0 = mm[0::10]["Micro_price"].reset_index(drop=True)
+        a1 = mm[1::10]["Micro_price"].reset_index(drop=True)
+        a2 = mm[2::10]["Micro_price"].reset_index(drop=True)
+        a3 = mm[3::10]["Micro_price"].reset_index(drop=True)
+        a4 = mm[4::10]["Micro_price"].reset_index(drop=True)
+        a5 = mm[5::10]["Micro_price"].reset_index(drop=True)
+        a6 = mm[6::10]["Micro_price"].reset_index(drop=True)
+        a7 = mm[7::10]["Micro_price"].reset_index(drop=True)
+        a8 = mm[8::10]["Micro_price"].reset_index(drop=True)
+        a9 = mm[9::10]["Micro_price"].reset_index(drop=True)
+        a = pd.concat((a0,a1,a2,a3,a4,a5,a6,a7,a8,a9),axis=1).reset_index(drop=True)
+        a.columns = ["0ms","1ms","2ms","3ms","4ms","5ms","6ms","7ms","8ms","9ms",]
+
+        '''df2: dennso. preprocess the df2( df2 is fixed , compare to df1 )'''
+        '''read toyota and dennso data(time and price)'''
+
+        def preprocessdf2(df1):
+
+            '''interval/ms'''
+            interval = np.linspace(32401,54000,2169000)
+            interval = pd.DataFrame(interval.round(2))
+            interval.columns = ["Time"]
+            interval["price"] = np.nan
+            dff = df1.assign(time=lambda df1: np.ceil(df1["Time"]*100)/100)
+            tests = dff.ix[:,1:]
+            tests = tests.drop_duplicates("time",keep='last')
+
+            '''merge interval data with real order data'''
+            m = interval.merge(tests,how='left', left_on='Time', right_on='time')
+            mu = m[["Time","Micro_price"]]
+            ms = mu.fillna(method='pad')
+            mm = ms.fillna(method='backfill')
+            return mm
+        dfs2 = preprocessdf2(df2)
+
+        very = pd.concat((dfs2,a),axis=1)
+
+
+        '''drop the data in the time of 11:30~12:30'''
+        def cut(df1):
+            dmp1 = pd.DataFrame(df1[(32401.0<df1.Time) & (df1.Time<41399.0)]).reset_index(drop=True)
+            dmp2 = pd.DataFrame(df1[(53999.0>df1.Time) & (df1.Time>45001.0)]).reset_index(drop=True)
+            dmp = pd.concat((dmp1,dmp2),axis=0).reset_index(drop = True)
+            return dmp
+        d = cut(very)
+
+        # print np.where(d.Time==41398),len(d)
+        # print d[903589:]
+
+        '''drop row of time'''
+        ds = d.iloc[:,1:]
+        '''log return'''
+        D = pd.DataFrame(np.diff(np.log(ds),axis=0))
+        '''cut data into 10 equal portion '''
+        cor = []
+        for i in range(10):
+            if i ==0:
+                c = D[:180718].corr().iloc[0,1:]
+            elif i ==4:
+                 c = D[180718*i:180718*(i+1)-1].corr().iloc[0,1:]
+            elif 0 < i < 4:
+                c = D[180718*i:180718*(i+1)].corr().iloc[0,1:]
+            elif 4 < i < 9:
+                c = D[180718*i:180718*(i+1)].corr().iloc[0,1:]
+            elif i == 9:
+                c = D[180718*i:].corr().iloc[0,1:]
+            cor.append(c)
+        cor = pd.DataFrame(cor).T.reset_index(drop=True)
+        cor.columns = ["9:00~9:30","9:30~10:00","10:00~10:30","10:30~11:00","11:00~11:30","12:30~13:00","13:00~13:30","13:30~14:00","14:00~14:30","14:30~15:00"]
+        return cor#,np.shape(cor)
+
+    cor1 = final(df1,df2)
+    # print cor1
+
+    def final1(df1,df2):
+        '''preprocess df1'''
+        def preprocessdf1(df1):
+
+            df1 = df1.round(3)
+
+            '''df1:toyota , match the interval of two different time series data'''
+            '''interval/ms'''
+            interval = np.linspace(32401,54000,21690000)
+            interval = pd.DataFrame(interval.round(3)).astype(np.float64)
+            interval.columns = ["time"]
+            interval["price"] = np.nan
+
+            '''merge interval data with real order data'''
+            m = interval.merge(df1,how='left', left_on='time', right_on='Time')
+            mu = m[["time","Micro_price"]]
+            ms = mu.fillna(method='pad')
+            mm = ms.fillna(method='backfill')
+            return mm
+        mm = preprocessdf1(df1)
+
+        '''lag data: from 1ms to 10 ms. we have to calculate the lag data from -1ms to -9ms'''
+
+        a1 = mm[1::10]["Micro_price"].reset_index(drop=True)
+        a2 = mm[2::10]["Micro_price"].reset_index(drop=True)
+        a3 = mm[3::10]["Micro_price"].reset_index(drop=True)
+        a4 = mm[4::10]["Micro_price"].reset_index(drop=True)
+        a5 = mm[5::10]["Micro_price"].reset_index(drop=True)
+        a6 = mm[6::10]["Micro_price"].reset_index(drop=True)
+        a7 = mm[7::10]["Micro_price"].reset_index(drop=True)
+        a8 = mm[8::10]["Micro_price"].reset_index(drop=True)
+        a9 = mm[9::10]["Micro_price"].reset_index(drop=True)
+        a = pd.concat((a1,a2,a3,a4,a5,a6,a7,a8,a9),axis=1).reset_index(drop=True)
+        a.columns = ["1ms","2ms","3ms","4ms","5ms","6ms","7ms","8ms","9ms",]
+
+        '''df2: dennso. preprocess the df2( df2 is fixed , compare to df1 )'''
+        '''read toyota and dennso data(time and price)'''
+
+        def preprocessdf2(df1):
+
+            '''interval/ms'''
+            interval = np.linspace(32401,54000,2169000)
+            interval = pd.DataFrame(interval.round(2))
+            interval.columns = ["Time"]
+            interval["price"] = np.nan
+            dff = df1.assign(time=lambda df1: np.ceil(df1["Time"]*100)/100)
+            tests = dff.ix[:,1:]
+            tests = tests.drop_duplicates("time",keep='last')
+
+            '''merge interval data with real order data'''
+            m = interval.merge(tests,how='left', left_on='Time', right_on='time')
+            mu = m[["Time","Micro_price"]]
+            ms = mu.fillna(method='pad')
+            mm = ms.fillna(method='backfill')
+            return mm
+        dfs2 = preprocessdf2(df2)
+
+        very = pd.concat((dfs2,a),axis=1)
+
+
+        '''drop the data in the time of 11:30~12:30'''
+        def cut(df1):
+            dmp1 = pd.DataFrame(df1[(32401.0<df1.Time) & (df1.Time<41399.0)]).reset_index(drop=True)
+            dmp2 = pd.DataFrame(df1[(53999.0>df1.Time) & (df1.Time>45001.0)]).reset_index(drop=True)
+            dmp = pd.concat((dmp1,dmp2),axis=0).reset_index(drop = True)
+            return dmp
+        d = cut(very)
+        
+
+        '''drop row of time'''
+        ds = d.iloc[:,1:]
+        '''log return'''
+        D = pd.DataFrame(np.diff(np.log(ds),axis=0))
+        '''cut data into 10 equal portion '''
+        cor = []
+        for i in range(10):
+            if i ==0:
+                c = D[:180718].corr().iloc[0,1:]
+            elif i ==4:
+                 c = D[180718*i:180718*(i+1)-1].corr().iloc[0,1:]
+            elif 0 < i < 4:
+                c = D[180718*i:180718*(i+1)].corr().iloc[0,1:]
+            elif 4 < i < 9:
+                c = D[180718*i:180718*(i+1)].corr().iloc[0,1:]
+            elif i == 9:
+                c = D[180718*i:].corr().iloc[0,1:]
+            cor.append(c)
+        cor = pd.DataFrame(cor).T
+        cor.columns = ["9:00~9:30","9:30~10:00","10:00~10:30","10:30~11:00",
+                               "11:00~11:30","12:30~13:00","13:00~13:30","13:30~14:00","14:00~14:30","14:30~15:00"]
+        return cor#,np.shape(cor)
+    cor2 = final1(df2,df1)
+    # print cor2
+
+    newindex = pd.DataFrame(np.asarray(range(-9,10))).sort_index(ascending=False).reset_index(drop=True)
+    newindex.columns = ["1ms"]
+    cor = pd.concat((cor1,cor2),axis=0).reset_index(drop=True)
+    final = pd.concat((newindex,cor),axis=1).reset_index(drop=True)
+    # print final
+    
+    path = r"/Users/jwan/Desktop/result"
+    final.to_csv(os.path.join(path,r"2016062%d_7203_7259.csv"%i))
+
+
