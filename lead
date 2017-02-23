@@ -1,1 +1,86 @@
-k
+# !/usr/bin/env python
+# -*- coding: utf-8 -*-
+import numpy as np
+import pandas as pd
+
+
+'''2016-6-24  df1: toyota   df2: dennsou '''
+df1 = pd.read_csv("/Users/jwan/Desktop/data/TickInfoSum_20160624_7203.csv")
+df2 = pd.read_csv("/Users/jwan/Desktop/data/TickInfoSum_20160624_6902.csv")
+
+''' extract the data after 9:00:01.000~'''
+def data(df1):
+    df1 = df1[df1.Time > 90001000000]
+#     df1 = df1[(df1.Time < 112959000000) | (df1.Time > 123001000000)]
+    df1 = df1.dropna(axis=1)
+    df1 = df1.dropna(axis=0)
+    df1 = df1.drop_duplicates("Time",keep='last')
+    df1 = df1.reset_index(drop=True)
+    return df1
+df1 = data(df1)
+df2 = data(df2)
+print df1[:10]
+print np.shape(df1),np.shape(df2)
+# print df1[df1.Time > 112958000000]
+
+'''precision round to 100ms'''
+dur1 = pd.DataFrame(df1["Time"]/1000).astype(np.int32)
+dur2 = pd.DataFrame(df2["Time"]/1000).astype(np.int32)
+
+'''10 o clock'''
+# print dur2[40822:]
+
+'''convert tick time to second time'''
+def to_string(time):
+    if time < 100000000:
+        time = str(time)
+        return "0 days %s:%s:%s.%s"%(time[0:1],time[1:3],time[3:5],time[5:8])
+    else:
+        time = str(time)
+        return "0 days %s:%s:%s.%s"%(time[0:2],time[2:4],time[4:6],time[6:9])
+    
+def second(du):
+    du = du.assign(str_time=lambda du: du["Time"].apply(lambda x: to_string(x)))
+    du = du.assign(second_time=lambda du: du["str_time"].apply(
+    lambda x: pd.to_timedelta(x)).apply(lambda x: x.total_seconds()))
+    du = du.second_time
+    du = pd.DataFrame(du)
+    du.columns = ["Time"]
+    return du
+du1 = second(dur1)#[1:].reset_index(drop=True)
+du2 = second(dur2)#[1:].reset_index(drop=True)
+
+
+# print np.shape(du1),np.shape(du2)
+
+'''Micro price'''
+def micro_price(df1):
+    price = df1.ix[:,8::3]
+    volumn = df1.ix[:,9::3]
+    MP = np.sum(np.multiply(price,volumn),axis=1).astype(np.float64)/np.sum(volumn,axis=1)
+    MP = pd.DataFrame(MP)
+    MP.columns = ["Micro_price"]
+    return MP
+MP1 = micro_price(df1)
+MP2 = micro_price(df2)
+
+# '''log Micro price return'''
+# MP1 = pd.DataFrame(np.diff(np.log(MP1),axis=0)).reset_index(drop=True)
+# MP1.columns = ["cMicro_price"]
+# MP2 = pd.DataFrame(np.diff(np.log(MP2),axis=0)).reset_index(drop=True)
+# MP2.columns = ["cMicro_price"]
+# # print MP1[:10]
+# # print MP2[:10]
+# print np.shape(MP1),np.shape(MP2)
+
+
+'''drop duplicate timestamp data'''
+dfs1 = pd.concat((du1,MP1),axis=1)
+dfs2 = pd.concat((du2,MP2),axis=1)
+dfs1 = dfs1.drop_duplicates('Time',take_last=True)
+dfs2 = dfs2.drop_duplicates('Time',take_last=True)
+
+# import matplotlib.pyplot as plt
+# plt.plot(dfs1.Micro_price,label = "toyota")
+# # plt.plot(dfs2.cMicro_price,label = "dennso")
+# plt.show()
